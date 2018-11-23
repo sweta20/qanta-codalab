@@ -3,7 +3,7 @@ from collections import defaultdict
 import pickle
 import json
 from os import path
-
+import os
 import click
 from tqdm import tqdm
 from elasticsearch_dsl import DocType, Text, Keyword, Search, Index
@@ -289,7 +289,7 @@ class ElasticSearchGuesser():
                 'similarity_b': self.similarity_b
             }, f)
 
-    def web_api(self, host='0.0.0.0', port=4861, debug=True):
+    def web_api(self, host='0.0.0.0', port=4861, debug=True, enable_batch=False):
 
         app = Flask(__name__)
 
@@ -356,6 +356,17 @@ def cli():
 
 
 @cli.command()
+@click.option('--host', default='0.0.0.0')
+@click.option('--port', default=4861)
+@click.option('--disable-batch', default=False, is_flag=True)
+def web(host, port, disable_batch):
+    """
+    Start web server wrapping tfidf model
+    """
+    elastic_guesser = ElasticSearchGuesser()
+    elastic_guesser.web_api(host, port, enable_batch=not disable_batch)
+
+@cli.command()
 @click.option('--use_wiki',is_flag=True, default=False)
 @click.option('--n_wiki_sentences', default=10)
 def train(use_wiki, n_wiki_sentences):
@@ -374,7 +385,7 @@ def train(use_wiki, n_wiki_sentences):
    
     elastic_guesser = ElasticSearchGuesser()
     elastic_guesser.train(training_data)
-    # elastic_guesser.web_api()
+    elastic_guesser.web_api()
 
 @cli.command()
 @click.option('--local-qanta-prefix', default='data/')
