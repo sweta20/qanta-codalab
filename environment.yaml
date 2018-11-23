@@ -1,0 +1,15 @@
+name: base
+dependencies:
+  - pytorch=0.4.1
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - nltk
+  - requests
+  - click
+  - flask
+  - unidecode
+  - elasticsearch-dsl=6.1.*
+channels:
+  - pytorch
