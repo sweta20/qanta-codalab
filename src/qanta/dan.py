@@ -113,6 +113,7 @@ class DanGuesser:
         self.criterion = None
         self.scheduler = None
         self.model_file = None
+        self.map_pattern = False
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -140,9 +141,10 @@ class DanGuesser:
         return q_batch
 
 
-    def train(self, training_data, full_question=False, create_runs=False) -> None:
-        x_train, y_train, x_val, y_val, i_to_word, class_to_i, i_to_class = preprocess_dataset(training_data, full_question=full_question, create_runs=create_runs)
+    def train(self, training_data, full_question=False, create_runs=False, map_pattern=False) -> None:
+        x_train, y_train, x_val, y_val, i_to_word, class_to_i, i_to_class = preprocess_dataset(training_data, full_question=full_question, create_runs=create_runs, map_pattern=map_pattern)
         self.class_to_i = class_to_i
+        self.map_pattern = map_pattern
         self.i_to_class = i_to_class
         log = get(__name__, "dan.log")
         log.info('Batchifying data')
@@ -238,7 +240,7 @@ class DanGuesser:
 
     def guess(self, questions: List[str], max_n_guesses: Optional[int]) -> List[List[Tuple[str, float]]]:
         y_data = np.zeros((len(questions)))
-        x_data = [tokenize_question(q) for q in questions]
+        x_data = [tokenize_question(q, self.map_pattern) for q in questions]
 
         batches = self.batchify(list(zip(x_data, y_data)))
         guesses = []
@@ -270,6 +272,7 @@ class DanGuesser:
         guesser.i_to_class = params['i_to_class']
         guesser.word_to_i = params['word_to_i']
         guesser.device = params['device']
+        guesser.map_pattern = params['map_pattern'] if 'map_pattern' in params else False
         guesser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         guesser.model = DanModel(len(guesser.i_to_class), len(guesser.word_to_i))
         guesser.model.load_state_dict(torch.load('dan.pt', map_location=lambda storage, loc: storage
@@ -278,6 +281,16 @@ class DanGuesser:
         guesser.model = guesser.model.to(guesser.device)
         return guesser
 
+    def save(self, directory: str) -> None:
+        shutil.copyfile(self.model_file, os.path.join(directory, 'dan.pt'))
+        with open(os.path.join(directory, 'dan.pkl'), 'wb') as f:
+            cloudpickle.dump({
+                'class_to_i': self.class_to_i,
+                'i_to_class': self.i_to_class,
+                'word_to_i': self.word_to_i,
+                'device' : self.device,
+                'map_pattern' : self.map_pattern
+            }, f)
 
 def create_app(path_dir="./", enable_batch=True):
     dan_guesser = DanGuesser.load(path_dir)
@@ -330,9 +343,10 @@ def web(host, port, disable_batch):
 @click.option('--use_wiki',is_flag=True, default=False)
 @click.option('--full_question',is_flag=True, default=False)
 @click.option('--create_runs',is_flag=True, default=False)
+@click.option('--map_pattern',is_flag=True, default=False)
 @click.option('--n_wiki_sentences', default=10)
 @click.option('--category', default=None)
-def train(use_wiki, n_wiki_sentences, full_question, create_runs, category):
+def train(use_wiki, n_wiki_sentences, full_question, create_runs, category, map_pattern):
     """
     Train the tfidf model, requires downloaded data and saves to models/
     """
@@ -346,10 +360,10 @@ def train(use_wiki, n_wiki_sentences, full_question, create_runs, category):
         training_data[0].extend(wiki_training_data[0])
         training_data[1].extend(wiki_training_data[1])
    
-    # dan_guesser = DanGuesser()
-    # dan_guesser.train(training_data, full_question, create_runs)
-    # dan_guesser.save("./")
-    dan_guesser = DanGuesser.load("./")
+    dan_guesser = DanGuesser()
+    dan_guesser.train(training_data, full_question, create_runs)
+    dan_guesser.save("./")
+    # dan_guesser = DanGuesser.load("./")
 
 
 @cli.command()

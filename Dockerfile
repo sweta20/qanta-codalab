@@ -6,6 +6,7 @@ RUN pip install awscli
 
 COPY environment.yaml /
 RUN conda env update -f environment.yaml
+RUN [ "python", "-c", "import nltk; nltk.download('punkt')" ]
 
 RUN mkdir /src
 RUN mkdir /src/data
