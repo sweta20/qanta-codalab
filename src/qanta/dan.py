@@ -10,6 +10,10 @@ import random
 import time
 import cloudpickle
 
+import xgboost
+import numpy as np
+
+
 import click
 from tqdm import tqdm
 from flask import Flask, jsonify, request
@@ -34,8 +38,11 @@ categories = {
     3: ['Current Events', 'Trash', 'Fine Arts', 'Geography']
 }
 
+BUZZER_PATH = 'buzzer_simple_dan.pkl'
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
+
+buzzer = pickle.load(open(BUZZER_PATH, "rb"))
 
 
 def guess_and_buzz(model, question_text) -> Tuple[str, bool]:
@@ -44,6 +51,13 @@ def guess_and_buzz(model, question_text) -> Tuple[str, bool]:
     buzz = scores[0] / sum(scores) >= BUZZ_THRESHOLD
     return guesses[0][0], buzz
 
+def guess_and_predict_buzz(model, question_text, char_skip=50) -> Tuple[str, bool]:
+    char_indices = list(range(char_skip, len(question_text) + char_skip, char_skip))
+    guesses = model.guess([question_text], BUZZ_NUM_GUESSES)[0]
+    scores = [guess[1] for guess in guesses]
+    buzz_preds = buzzer.predict([np.append(scores, char_indices[-1])])
+    buzz = buzz_preds[0]
+    return guesses[0][0], buzz
 
 def batch_guess_and_buzz(model, questions) -> List[Tuple[str, bool]]:
     question_guesses = model.guess(questions, BUZZ_NUM_GUESSES)
@@ -51,6 +65,20 @@ def batch_guess_and_buzz(model, questions) -> List[Tuple[str, bool]]:
     for guesses in question_guesses:
         scores = [guess[1] for guess in guesses]
         buzz = scores[0] / sum(scores) >= BUZZ_THRESHOLD
+        outputs.append((guesses[0][0], buzz))
+    return outputs
+
+def batch_guess_and_predict_buzz(model, questions, char_skip=50) -> List[Tuple[str, bool]]:
+    question_guesses = model.guess(questions, BUZZ_NUM_GUESSES)
+    outputs = []
+    for i in range(len(question_guesses)):
+        char_indices = list(range(char_skip, len(questions[i]) + char_skip, char_skip))
+        guesses = question_guesses[i]
+        scores = [guess[1] for guess in guesses]
+        buzz_preds = buzzer.predict([np.append(scores, char_indices[-1])])
+        buzz = buzz_preds[0]
+        if buzz:
+            print("Predicted buzz:" + str(buzz))
         outputs.append((guesses[0][0], buzz))
     return outputs
 
@@ -62,7 +90,6 @@ def make_array(tokens, vocab, add_eos=True):
     if add_eos:
         ids.append(eos_id)
     return np.array(ids, 'i')
-
 
 def transform_to_array(dataset, vocab, with_label=True):
     if with_label:
@@ -113,7 +140,7 @@ class DanGuesser:
         self.criterion = None
         self.scheduler = None
         self.model_file = None
-        self.map_pattern = False
+        self.map_pattern = True
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -272,7 +299,8 @@ class DanGuesser:
         guesser.i_to_class = params['i_to_class']
         guesser.word_to_i = params['word_to_i']
         guesser.device = params['device']
-        guesser.map_pattern = params['map_pattern'] if 'map_pattern' in params else False
+        guesser.map_pattern = True
+        # guesser.map_pattern = params['map_pattern'] if 'map_pattern' in params else False
         guesser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         guesser.model = DanModel(len(guesser.i_to_class), len(guesser.word_to_i))
         guesser.model.load_state_dict(torch.load('dan.pt', map_location=lambda storage, loc: storage
@@ -299,7 +327,7 @@ def create_app(path_dir="./", enable_batch=True):
     @app.route('/api/1.0/quizbowl/act', methods=['POST'])
     def act():
         question = request.json['text']
-        guess, buzz = guess_and_buzz(dan_guesser, question)
+        guess, buzz = guess_and_predict_buzz(dan_guesser, question)
         print("Here")
         return jsonify({'guess': guess, 'buzz': True if buzz else False})
 
@@ -316,7 +344,7 @@ def create_app(path_dir="./", enable_batch=True):
         questions = [q['text'] for q in request.json['questions']]
         return jsonify([
             {'guess': guess, 'buzz': True if buzz else False}
-            for guess, buzz in batch_guess_and_buzz(dan_guesser, questions)
+            for guess, buzz in batch_guess_and_predict_buzz(dan_guesser, questions)
         ])
 
     return app

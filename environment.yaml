@@ -11,5 +11,7 @@ dependencies:
   - flask
   - unidecode
   - elasticsearch-dsl=6.1.*
+  - pip:
+      - xgboost
 channels:
   - pytorch

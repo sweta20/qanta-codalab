@@ -3,6 +3,8 @@ from collections import defaultdict
 import pickle
 import json
 from os import path
+import xgboost
+import numpy as np
 
 import click
 from tqdm import tqdm
@@ -15,8 +17,11 @@ from qanta.preprocess import WikipediaDataset
 
 
 MODEL_PATH = 'tfidf.pickle'
+BUZZER_PATH = 'buzzer_simple.pkl'
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
+
+buzzer = pickle.load(open(BUZZER_PATH, "rb"))
 
 
 def guess_and_buzz(model, question_text) -> Tuple[str, bool]:
@@ -25,6 +30,13 @@ def guess_and_buzz(model, question_text) -> Tuple[str, bool]:
     buzz = scores[0] / sum(scores) >= BUZZ_THRESHOLD
     return guesses[0][0], buzz
 
+def guess_and_predict_buzz(model, question_text, char_skip=50) -> Tuple[str, bool]:
+    char_indices = list(range(char_skip, len(question_text) + char_skip, char_skip))
+    guesses = model.guess([question_text], BUZZ_NUM_GUESSES)[0]
+    scores = [guess[1] for guess in guesses]
+    buzz_preds = buzzer.predict([np.append(scores, char_indices[-1])])
+    buzz = buzz_preds[0]
+    return guesses[0][0], buzz
 
 def batch_guess_and_buzz(model, questions) -> List[Tuple[str, bool]]:
     question_guesses = model.guess(questions, BUZZ_NUM_GUESSES)
@@ -32,6 +44,20 @@ def batch_guess_and_buzz(model, questions) -> List[Tuple[str, bool]]:
     for guesses in question_guesses:
         scores = [guess[1] for guess in guesses]
         buzz = scores[0] / sum(scores) >= BUZZ_THRESHOLD
+        outputs.append((guesses[0][0], buzz))
+    return outputs
+
+def batch_guess_and_predict_buzz(model, questions, char_skip=50) -> List[Tuple[str, bool]]:
+    question_guesses = model.guess(questions, BUZZ_NUM_GUESSES)
+    outputs = []
+    for i in range(len(question_guesses)):
+        char_indices = list(range(char_skip, len(questions[i]) + char_skip, char_skip))
+        guesses = question_guesses[i]
+        scores = [guess[1] for guess in guesses]
+        buzz_preds = buzzer.predict([np.append(scores, char_indices[-1])])
+        buzz = buzz_preds[0]
+        if buzz:
+            print("Predicted buzz:" + str(buzz))
         outputs.append((guesses[0][0], buzz))
     return outputs
 
@@ -99,8 +125,7 @@ def create_app(enable_batch=True):
     @app.route('/api/1.0/quizbowl/act', methods=['POST'])
     def act():
         question = request.json['text']
-        guess, buzz = guess_and_buzz(tfidf_guesser, question)
-        print("Here")
+        guess, buzz = guess_and_predict_buzz(tfidf_guesser, question)
         return jsonify({'guess': guess, 'buzz': True if buzz else False})
 
     @app.route('/api/1.0/quizbowl/status', methods=['GET'])
@@ -116,10 +141,8 @@ def create_app(enable_batch=True):
         questions = [q['text'] for q in request.json['questions']]
         return jsonify([
             {'guess': guess, 'buzz': True if buzz else False}
-            for guess, buzz in batch_guess_and_buzz(tfidf_guesser, questions)
+            for guess, buzz in batch_guess_and_predict_buzz(tfidf_guesser, questions)
         ])
-
-
     return app
 
 

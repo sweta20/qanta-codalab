@@ -11,7 +11,7 @@ services:
   #     - ./elasticsearch/data:/src/elasticsearch/data
   #     - ./elasticsearch/log:/src/elasticsearch/log
   qb:
-    image: "docker.io/entilzha/quizbowl:0.1"
+    image: "docker.io/sweagraw/quizbowl"
     ports:
       - "4861:4861"
     volumes:
@@ -19,7 +19,7 @@ services:
       - ./data/:/src/data
     command: ["bash", "run.sh"]
   eval:
-    image: "docker.io/entilzha/quizbowl:0.1"
+    image: "docker.io/sweagraw/quizbowl"
     volumes:
       - ./src/:/src
       - ./data/:/src/data
