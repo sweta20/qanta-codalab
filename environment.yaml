@@ -4,13 +4,14 @@ dependencies:
   - numpy
   - scipy
   - pandas
-  - scikit-learn
+  - scikit-learn=0.19.1
   - nltk
   - requests
   - click
   - flask
   - unidecode
   - elasticsearch-dsl=6.1.*
+  - spacy
   - pip:
       - xgboost
 channels:

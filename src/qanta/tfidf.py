@@ -15,9 +15,10 @@ from qanta import util
 from qanta.dataset import QuizBowlDataset
 from qanta.preprocess import WikipediaDataset
 
+from qanta.buzzer_utils import Buzzer
 
-MODEL_PATH = 'tfidf.pickle'
-BUZZER_PATH = 'buzzer_simple.pkl'
+MODEL_PATH = 'models/tfidf.pickle'
+BUZZER_PATH = 'models/buzzer_tfidf.pkl'
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
 
@@ -67,6 +68,7 @@ class TfidfGuesser:
         self.tfidf_vectorizer = None
         self.tfidf_matrix = None
         self.i_to_ans = None
+        self.name = "tfidf"
 
     def train(self, training_data) -> None:
         questions = training_data[0]
@@ -84,7 +86,7 @@ class TfidfGuesser:
 
         self.i_to_ans = {i: ans for i, ans in enumerate(y_array)}
         self.tfidf_vectorizer = TfidfVectorizer(
-            ngram_range=(1, 3), min_df=2, max_df=.9
+            ngram_range=(1, 3), min_df=2, max_df=.9, stop_words='english'
         ).fit(x_array)
         self.tfidf_matrix = self.tfidf_vectorizer.transform(x_array)
 
@@ -183,6 +185,17 @@ def train(use_wiki, n_wiki_sentences):
     tfidf_guesser = TfidfGuesser()
     tfidf_guesser.train(training_data)
     tfidf_guesser.save()
+
+
+@cli.command()
+def train_buzzer():
+    """
+    Train the tfidf buzzer saves to ./
+    """
+    tfidf_guesser = TfidfGuesser.load()
+    tfidf_buzzer = Buzzer(tfidf_guesser)
+    tfidf_buzzer.train()
+    tfidf_buzzer.save("./models/")
 
 
 @cli.command()

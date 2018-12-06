@@ -6,10 +6,14 @@ from sklearn.model_selection import train_test_split
 import numpy
 import random
 import json
+import spacy
+
 # from unidecode import unidecode
 from typing import Set
 import nltk
 import re
+import requests
+from nltk.corpus import stopwords
 
 ftp_patterns = {
     '\n',
@@ -31,6 +35,9 @@ patterns = ftp_patterns | set(string.punctuation)
 regex_pattern = '|'.join([re.escape(p) for p in patterns])
 regex_pattern += r'|\[.*?\]|\(.*?\)'
 regex_pattern_apostrophe = r'(\w+)\'s'
+stop_words = set(stopwords.words('english')) 
+
+nlp = spacy.load('xx_ent_wiki_sm')
 
 def my_replace(match):
     pattern = match.group().split(" ")
@@ -103,29 +110,100 @@ class WikipediaDataset():
 
         return wiki_content, wiki_answers, None
 
-def clean_question(question: str, map_pattern=False):
+
+def get_response(text):
+    """
+    this function generates the final sentence after changing the format of the highlighted text from ElasticSearch.
+    :param text: input text
+    :return:
+    """
+    stopword_list = list(set(stopwords.words("english")))
+    url = "http://192.168.34.9:5000/api/get_highlights"  # the URL of the ElasticSearch host goes here
+    data = {"text": text}
+    try:
+        response = requests.post(url=url, data=data)
+        response_json = response.json()
+        highlighted_words = []
+
+        qb_info = response_json["qb"]
+        wiki_info = response_json["wiki"]
+
+        for info in wiki_info:
+            info_split = info.split()
+            highlighted_words += [word.replace("<em>", "").replace("</em>", "") for word in info_split if
+                                  "<em>" in word]
+
+        for info in qb_info:
+            info_split = info.split()
+            highlighted_words += [word.replace("<em>", "").replace("</em>", "") for word in info_split if
+                                  "<em>" in word]
+
+        original_highlighted_words = list(set(highlighted_words) - set(stopword_list))
+        highlighted_words = list(set([word.lower() for word in original_highlighted_words]) - set(stopword_list))
+
+        final_text = []
+        final_sentences = []
+        sentences = text.split(".")
+        for sentence in sentences:
+            prev_list = []
+            for word in sentence.split():
+                if word.lower() in highlighted_words:
+                    word = word.upper()
+                    if prev_list and prev_list[-1]:
+                        elem = final_text.pop()
+                        prev_list.pop()
+                        word = elem + "_" + word
+
+                    prev_list.append(True)
+
+                else:
+                    prev_list.append(False)
+                final_text.append(word)
+            reconstructed_sentence = " ".join(final_text) + "."
+            final_text = []
+            final_sentences.append(reconstructed_sentence)
+
+        return "".join(final_sentences)
+
+    except Exception as err:
+        print(err)
+
+    return text
+
+def clean_question(question: str, map_pattern=False, wiki_links=False, use_es_highlight=False):
     """
     Remove pronunciation guides and other formatting extras
     :param question:
     :return:
     """
-    clean_ques = re.sub(regex_pattern, '', question.strip().lower())
-    clean_ques = re.sub(regex_pattern_apostrophe, my_apos_replace, question.strip().lower())
+    if wiki_links:
+        # don't lowercase linked wikipedia entities
+        question_lower = link_question(question)
+    elif use_es_highlight:
+        try:
+            question_lower = get_response(question)
+        except:
+            question_lower = question.lower()
+    else: 
+        question_lower = question.lower()
+
+    clean_ques = re.sub(regex_pattern, '', question_lower.strip())
+    clean_ques = re.sub(regex_pattern_apostrophe, my_apos_replace, question_lower.strip())
     if map_pattern:
         for pattern in ques_patterns:
             clean_ques = re.sub(pattern, my_replace, clean_ques)
     return clean_ques
     
-def tokenize_question(text: str, map_pattern=False) -> List[str]:
-    return word_tokenize(clean_question(text, map_pattern))
-
+def tokenize_question(text: str, map_pattern=False, wiki_links=False, use_es_highlight=False) -> List[str]:
+    return [w for w in word_tokenize(clean_question(text, map_pattern, wiki_links, use_es_highlight)) if not w in stop_words]
+    # return word_tokenize(clean_question(text, map_pattern, wiki_links, use_es_highlight))
 
 def format_guess(guess):
     return guess.strip().lower().replace(' ', '_').replace(':', '').replace('|', '')
 
 def preprocess_dataset(data, train_size=.9, test_size=.1,
                        vocab=None, class_to_i=None, i_to_class=None,
-                       create_runs=False, full_question=False, map_pattern=False):
+                       create_runs=False, full_question=False, map_pattern=False, wiki_links=False, use_es_highlight=False):
     """
     This function does primarily text preprocessing on the dataset. It will return x_train and x_test as a list of
     examples where each word is a tokenized word list (not padded). y_train and y_test is a list of indices coresponding
@@ -175,7 +253,7 @@ def preprocess_dataset(data, train_size=.9, test_size=.1,
     for q, ans in train:
         q_text = []
         for sentence in q:
-            t_question = tokenize_question(sentence, map_pattern)
+            t_question = tokenize_question(sentence, map_pattern, wiki_links, use_es_highlight)
             if create_runs or full_question:
                 q_text.extend(t_question)
             else:
@@ -197,7 +275,7 @@ def preprocess_dataset(data, train_size=.9, test_size=.1,
     for q, ans in test:
         q_text = []
         for sentence in q:
-            t_question = tokenize_question(sentence, map_pattern)
+            t_question = tokenize_question(sentence, map_pattern, wiki_links, use_es_highlight)
             if len(t_question) > 0:
                 if create_runs or full_question:
                     q_text.extend(t_question)

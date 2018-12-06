@@ -13,7 +13,6 @@ import cloudpickle
 import xgboost
 import numpy as np
 
-
 import click
 from tqdm import tqdm
 from flask import Flask, jsonify, request
@@ -38,11 +37,11 @@ categories = {
     3: ['Current Events', 'Trash', 'Fine Arts', 'Geography']
 }
 
-BUZZER_PATH = 'buzzer_simple_dan.pkl'
+# BUZZER_PATH = './models/buzzer_simple_dan.pkl'
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
 
-buzzer = pickle.load(open(BUZZER_PATH, "rb"))
+# buzzer = pickle.load(open(BUZZER_PATH, "rb"))
 
 
 def guess_and_buzz(model, question_text) -> Tuple[str, bool]:
@@ -77,8 +76,6 @@ def batch_guess_and_predict_buzz(model, questions, char_skip=50) -> List[Tuple[s
         scores = [guess[1] for guess in guesses]
         buzz_preds = buzzer.predict([np.append(scores, char_indices[-1])])
         buzz = buzz_preds[0]
-        if buzz:
-            print("Predicted buzz:" + str(buzz))
         outputs.append((guesses[0][0], buzz))
     return outputs
 
@@ -140,7 +137,15 @@ class DanGuesser:
         self.criterion = None
         self.scheduler = None
         self.model_file = None
-        self.map_pattern = True
+
+        self.map_pattern = False
+        self.wiki_links = False
+        self.use_es_highlight = False
+        self.full_question = False
+        self.use_wiki = False
+
+        self.name = "dan"
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -172,6 +177,9 @@ class DanGuesser:
         x_train, y_train, x_val, y_val, i_to_word, class_to_i, i_to_class = preprocess_dataset(training_data, full_question=full_question, create_runs=create_runs, map_pattern=map_pattern)
         self.class_to_i = class_to_i
         self.map_pattern = map_pattern
+        self.use_wiki = use_wiki
+        self.full_question = full_question
+
         self.i_to_class = i_to_class
         log = get(__name__, "dan.log")
         log.info('Batchifying data')
@@ -294,40 +302,50 @@ class DanGuesser:
     def load(cls, directory: str):
         with open(os.path.join(directory, 'dan.pkl'), 'rb') as f:
             params = cloudpickle.load(f)
+
+        print('Params: Use Wiki: ' + str(params['use_wiki']) + ' Use Pattern: ' + str(params['map_pattern']) \
+            + ' Wiki_links: ' + str(params['wiki_links']) + ' ES highlights: ' + str(params['use_es_highlight']))
         guesser = DanGuesser()
         guesser.class_to_i = params['class_to_i']
         guesser.i_to_class = params['i_to_class']
         guesser.word_to_i = params['word_to_i']
         guesser.device = params['device']
-        guesser.map_pattern = True
-        # guesser.map_pattern = params['map_pattern'] if 'map_pattern' in params else False
+        guesser.map_pattern = params['map_pattern']
+        guesser.wiki_links = params['wiki_links']
+        guesser.use_wiki = params['use_wiki']
+        guesser.use_es_highlight = params['use_es_highlight']
         guesser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         guesser.model = DanModel(len(guesser.i_to_class), len(guesser.word_to_i))
-        guesser.model.load_state_dict(torch.load('dan.pt', map_location=lambda storage, loc: storage
+        guesser.model.load_state_dict(torch.load(
+            os.path.join(directory, 'dan.pt'), map_location=lambda storage, loc: storage
         ).state_dict())
         guesser.model.eval()
         guesser.model = guesser.model.to(guesser.device)
         return guesser
 
     def save(self, directory: str) -> None:
+        os.mkdir(directory)
         shutil.copyfile(self.model_file, os.path.join(directory, 'dan.pt'))
         with open(os.path.join(directory, 'dan.pkl'), 'wb') as f:
             cloudpickle.dump({
                 'class_to_i': self.class_to_i,
                 'i_to_class': self.i_to_class,
                 'word_to_i': self.word_to_i,
+                'use_wiki' : self.use_wiki,
                 'device' : self.device,
-                'map_pattern' : self.map_pattern
+                'map_pattern' : self.map_pattern,
+                'wiki_links' : self.wiki_links,
+                'use_es_highlight' : self.use_es_highlight
             }, f)
 
-def create_app(path_dir="./", enable_batch=True):
+def create_app(path_dir="./models/dan_pattern_es", enable_batch=True):
     dan_guesser = DanGuesser.load(path_dir)
     app = Flask(__name__)
 
     @app.route('/api/1.0/quizbowl/act', methods=['POST'])
     def act():
         question = request.json['text']
-        guess, buzz = guess_and_predict_buzz(dan_guesser, question)
+        guess, buzz = guess_and_buzz(dan_guesser, question)
         print("Here")
         return jsonify({'guess': guess, 'buzz': True if buzz else False})
 
@@ -344,7 +362,7 @@ def create_app(path_dir="./", enable_batch=True):
         questions = [q['text'] for q in request.json['questions']]
         return jsonify([
             {'guess': guess, 'buzz': True if buzz else False}
-            for guess, buzz in batch_guess_and_predict_buzz(dan_guesser, questions)
+            for guess, buzz in batch_guess_and_buzz(dan_guesser, questions)
         ])
 
     return app
