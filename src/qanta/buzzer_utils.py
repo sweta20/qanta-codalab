@@ -187,4 +187,4 @@ class Buzzer():
 		print("Accuracy: %.2f%%" % (accuracy * 100.0))
 
 	def save(self,save_path):
-		pickle.dump(self.buzzer_model, open(save_path + "buzzer_"+ self.model.name + ".pkl", "wb"))
+		pickle.dump(self.buzzer_model, open(save_path + "/buzzer_"+ self.model.name + ".pkl", "wb"))

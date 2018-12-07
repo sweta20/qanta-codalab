@@ -30,6 +30,8 @@ from qanta.dataset import QuizBowlDataset
 from qanta.preprocess import preprocess_dataset, WikipediaDataset, tokenize_question
 from models import DanModel
 
+from qanta.buzzer_utils import Buzzer
+
 categories = {
     0: ['History', 'Philosophy', 'Religion'],
     1: ['Literature', 'Mythology'],
@@ -37,11 +39,13 @@ categories = {
     3: ['Current Events', 'Trash', 'Fine Arts', 'Geography']
 }
 
-# BUZZER_PATH = './models/buzzer_simple_dan.pkl'
+MODEL_PATH = "./models/dan_pattern_ner"
+
+BUZZER_PATH = MODEL_PATH + "/buzzer_"+ MODEL_PATH.split("/")[-1] + ".pkl"
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
 
-# buzzer = pickle.load(open(BUZZER_PATH, "rb"))
+buzzer = pickle.load(open(BUZZER_PATH, "rb"))
 
 
 def guess_and_buzz(model, question_text) -> Tuple[str, bool]:
@@ -303,6 +307,8 @@ class DanGuesser:
         with open(os.path.join(directory, 'dan.pkl'), 'rb') as f:
             params = cloudpickle.load(f)
 
+        params['use_wiki'] = False # added to avoid model confusion for dan_pattern_es
+
         print('Params: Use Wiki: ' + str(params['use_wiki']) + ' Use Pattern: ' + str(params['map_pattern']) \
             + ' Wiki_links: ' + str(params['wiki_links']) + ' ES highlights: ' + str(params['use_es_highlight']))
         guesser = DanGuesser()
@@ -316,6 +322,7 @@ class DanGuesser:
         guesser.use_es_highlight = params['use_es_highlight']
         guesser.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         guesser.model = DanModel(len(guesser.i_to_class), len(guesser.word_to_i))
+        guesser.name = directory.split("/")[-1]
         guesser.model.load_state_dict(torch.load(
             os.path.join(directory, 'dan.pt'), map_location=lambda storage, loc: storage
         ).state_dict())
@@ -338,15 +345,17 @@ class DanGuesser:
                 'use_es_highlight' : self.use_es_highlight
             }, f)
 
-def create_app(path_dir="./models/dan_pattern_es", enable_batch=True):
+def create_app(path_dir=MODEL_PATH, enable_batch=True, predict=False):
     dan_guesser = DanGuesser.load(path_dir)
     app = Flask(__name__)
 
     @app.route('/api/1.0/quizbowl/act', methods=['POST'])
     def act():
         question = request.json['text']
-        guess, buzz = guess_and_buzz(dan_guesser, question)
-        print("Here")
+        if predict:
+            guess, buzz = guess_and_predict_buzz(dan_guesser, question)
+        else:
+            guess, buzz = guess_and_buzz(dan_guesser, question)
         return jsonify({'guess': guess, 'buzz': True if buzz else False})
 
     @app.route('/api/1.0/quizbowl/status', methods=['GET'])
@@ -360,10 +369,16 @@ def create_app(path_dir="./models/dan_pattern_es", enable_batch=True):
     @app.route('/api/1.0/quizbowl/batch_act', methods=['POST'])
     def batch_act():
         questions = [q['text'] for q in request.json['questions']]
-        return jsonify([
+        if predict:
+            return jsonify([
+            {'guess': guess, 'buzz': True if buzz else False}
+            for guess, buzz in batch_guess_and_predict_buzz(dan_guesser, questions)
+            ])
+        else:
+            return jsonify([
             {'guess': guess, 'buzz': True if buzz else False}
             for guess, buzz in batch_guess_and_buzz(dan_guesser, questions)
-        ])
+            ])
 
     return app
 
@@ -376,12 +391,13 @@ def cli():
 @cli.command()
 @click.option('--host', default='0.0.0.0')
 @click.option('--port', default=4861)
+@click.option('--predict', default=True)
 @click.option('--disable-batch', default=False, is_flag=True)
-def web(host, port, disable_batch):
+def web(host, port, disable_batch, predict):
     """
     Start web server wrapping tfidf model
     """
-    app = create_app(enable_batch=not disable_batch)
+    app = create_app(enable_batch=not disable_batch, predict=predict)
     app.run(host=host, port=port, debug=False)
 
 
@@ -392,7 +408,8 @@ def web(host, port, disable_batch):
 @click.option('--map_pattern',is_flag=True, default=False)
 @click.option('--n_wiki_sentences', default=10)
 @click.option('--category', default=None)
-def train(use_wiki, n_wiki_sentences, full_question, create_runs, category, map_pattern):
+@click.option('--path', default="./")
+def train(use_wiki, n_wiki_sentences, full_question, create_runs, category, map_pattern, path):
     """
     Train the tfidf model, requires downloaded data and saves to models/
     """
@@ -408,8 +425,19 @@ def train(use_wiki, n_wiki_sentences, full_question, create_runs, category, map_
    
     dan_guesser = DanGuesser()
     dan_guesser.train(training_data, full_question, create_runs)
-    dan_guesser.save("./")
-    # dan_guesser = DanGuesser.load("./")
+    dan_guesser.save(path)
+
+
+@cli.command()
+@click.option('--model-path', default=MODEL_PATH)
+def train_buzzer(model_path):
+    """
+    Train the tfidf buzzer saves to ./
+    """
+    dan_guesser = DanGuesser.load(model_path)
+    dan_buzzer = Buzzer(dan_guesser)
+    dan_buzzer.train()
+    dan_buzzer.save(model_path)
 
 
 @cli.command()
