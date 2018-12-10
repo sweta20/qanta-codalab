@@ -138,8 +138,6 @@ class Buzzer():
 			a sequence of vectors
 		'''
 		length = len(guesses_sequence)
-		prev_dict = dict()
-
 		vecs = []
 		for i in range(length):
 			prob_vec = []
@@ -151,7 +149,6 @@ class Buzzer():
 					prob_vec.append(0)
 			features = prob_vec
 			vecs.append(np.array(features, dtype=np.float32))
-			prev_dict = {g: p for g, p in guesses}
 		return vecs
 
 	def train(self):
