@@ -39,7 +39,7 @@ categories = {
     3: ['Current Events', 'Trash', 'Fine Arts', 'Geography']
 }
 
-MODEL_PATH = "./models/dan_pattern_ner"
+MODEL_PATH = "./models/dan_pattern_es"
 
 BUZZER_PATH = MODEL_PATH + "/buzzer_"+ MODEL_PATH.split("/")[-1] + ".pkl"
 BUZZ_NUM_GUESSES = 10
@@ -307,7 +307,7 @@ class DanGuesser:
         with open(os.path.join(directory, 'dan.pkl'), 'rb') as f:
             params = cloudpickle.load(f)
 
-        params['use_wiki'] = False # added to avoid model confusion for dan_pattern_es
+        # params['use_wiki'] = False # added to avoid model confusion for dan_pattern_es
 
         print('Params: Use Wiki: ' + str(params['use_wiki']) + ' Use Pattern: ' + str(params['map_pattern']) \
             + ' Wiki_links: ' + str(params['wiki_links']) + ' ES highlights: ' + str(params['use_es_highlight']))

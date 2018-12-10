@@ -138,34 +138,31 @@ class Buzzer():
 			a sequence of vectors
 		'''
 		length = len(guesses_sequence)
-		prev_prob_vec = [0. for _ in range(self.max_n_guesses)]
 		prev_dict = dict()
 
 		vecs = []
 		for i in range(length):
 			prob_vec = []
-			prob_diff_vec = []
+			prev_prob_vec = []
 			isnew_vec = []
 			guesses = guesses_sequence[i][0]
 			for guess, prob in guesses:
 				prob_vec.append(prob)
 				if i > 0 and guess in prev_dict:
-					prev_prob = prev_dict[guess]
-					prob_diff_vec.append(prob - prev_prob)
+					prev_prob_vec.append(prev_dict[guess])
 					isnew_vec.append(0)
 				else:
-					prob_diff_vec.append(prob)
+					prev_prob_vec.append(0)
 					isnew_vec.append(1)
 			if len(guesses) < self.max_n_guesses:
 				for k in range(max(self.max_n_guesses - len(guesses), 0)):
 					prob_vec.append(0)
-					prob_diff_vec.append(0)
+					prev_prob_vec.append(0)
 					isnew_vec.append(0)
 			features = prob_vec[:10] \
 				+ isnew_vec[:10] \
-				+ prob_diff_vec[:10] 
+				+ prev_prob_vec[:10] 
 			vecs.append(np.array(features, dtype=np.float32))
-			prev_prob_vec = prob_vec
 			prev_dict = {g: p for g, p in guesses}
 		return vecs
 
