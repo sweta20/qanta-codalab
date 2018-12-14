@@ -181,14 +181,14 @@ def clean_question(question: str, map_pattern=False, wiki_links=False, use_es_hi
         question_lower = link_question(question)
     elif use_es_highlight:
         try:
-            question_lower = get_response(question)
+            question_lower = get_response(question.lower())
         except:
             question_lower = question.lower()
     else: 
         question_lower = question.lower()
 
     clean_ques = re.sub(regex_pattern, '', question_lower.strip())
-    clean_ques = re.sub(regex_pattern_apostrophe, my_apos_replace, question_lower.strip())
+    # clean_ques = re.sub(regex_pattern_apostrophe, my_apos_replace, question_lower.strip())
     if map_pattern:
         for pattern in ques_patterns:
             clean_ques = re.sub(pattern, my_replace, clean_ques)

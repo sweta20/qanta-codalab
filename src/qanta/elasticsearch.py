@@ -22,7 +22,7 @@ WikipediaPage = namedtuple('WikipediaPage', ['id', 'title', 'text', 'url'])
 
 log = get(__name__)
 ES_PARAMS = 'es_params.pickle'
-connections.create_connection(hosts=['es'])
+connections.create_connection(hosts=['qb'])
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
 
@@ -76,7 +76,7 @@ class ElasticSearchIndex:
         self.answer_doc.init(index=self.name)
 
     def build_large_docs(self, documents: Dict[str, str], use_wiki=True, use_qb=True, rebuild_index=False):
-        if rebuild_index or bool(int(os.getenv('QB_REBUILD_INDEX', 0))):
+        if rebuild_index and bool(int(os.getenv('QB_REBUILD_INDEX', 0))):
             log.info(f'Deleting index: {self.name}')
             self.delete()
 
@@ -110,7 +110,7 @@ class ElasticSearchIndex:
                 answer.save(index=self.name)
 
     def build_many_docs(self, pages, documents, use_wiki=True, use_qb=True, rebuild_index=False):
-        if rebuild_index or bool(int(os.getenv('QB_REBUILD_INDEX', 0))):
+        if rebuild_index and bool(int(os.getenv('QB_REBUILD_INDEX', 0))):
             log.info(f'Deleting index: {self.name}')
             self.delete()
 
@@ -200,12 +200,13 @@ class ElasticSearchGuesser():
 
 
     def batch_guess_and_buzz(self, questions) -> List[Tuple[str, bool]]:
-        question_guesses = self.guess(questions, BUZZ_NUM_GUESSES)
+        question_guesses = [self.guess_and_buzz([questions[i]]) for i in range(len(questions))]
         outputs = []
         for guesses in question_guesses:
             scores = [guess[1] for guess in guesses]
             buzz = scores[0] / sum(scores) >= BUZZ_THRESHOLD
             outputs.append((guesses[0][0], buzz))
+        # print(outputs)
         return outputs
 
 
@@ -301,6 +302,7 @@ class ElasticSearchGuesser():
 
         @app.route('/api/1.0/quizbowl/status', methods=['GET'])
         def status():
+            print("Enable: " + str(enable_batch))
             return jsonify({
                 'batch': enable_batch,
                 'batch_size': 200,
@@ -364,7 +366,7 @@ def web(host, port, disable_batch):
     Start web server wrapping tfidf model
     """
     elastic_guesser = ElasticSearchGuesser()
-    elastic_guesser.web_api(host, port, enable_batch=not disable_batch)
+    elastic_guesser.web_api(host, port, enable_batch=False)
 
 @cli.command()
 @click.option('--use_wiki',is_flag=True, default=False)
