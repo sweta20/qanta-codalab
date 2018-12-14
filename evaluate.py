@@ -144,10 +144,12 @@ def check_port(hostname, port):
 @click.option('--norun-web', default=False, is_flag=True)
 @click.option('--wait', default=0, type=int)
 @click.option('--curve-pkl', default='curve_pipeline.pkl')
-@click.option('--retries', default=20)
-@click.option('--retry-delay', default=3)
+@click.option('--retries', default=500)
+@click.option('--retry-delay', default=10)
 def evaluate(input_dir, output_dir, score_dir, char_step_size, hostname,
              norun_web, wait, curve_pkl, retries, retry_delay):
+
+    # time.sleep(500)
     try:
         if not norun_web:
             web_proc = start_server()

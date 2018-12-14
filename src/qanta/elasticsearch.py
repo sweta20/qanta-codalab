@@ -9,7 +9,7 @@ from tqdm import tqdm
 from elasticsearch_dsl import DocType, Text, Keyword, Search, Index
 from elasticsearch_dsl.connections import connections
 import elasticsearch
-from flask import Flask, jsonify, request
+
 
 from jinja2 import Environment, PackageLoader, FileSystemLoader
 from nltk.tokenize import word_tokenize
@@ -18,11 +18,13 @@ from qanta.util import *
 from qanta.dataset import QuizBowlDataset
 from qanta.preprocess import WikipediaDataset
 from collections import namedtuple
+
+from flask import Flask, jsonify, request
 WikipediaPage = namedtuple('WikipediaPage', ['id', 'title', 'text', 'url'])
 
 log = get(__name__)
 ES_PARAMS = 'es_params.pickle'
-connections.create_connection(hosts=['qb'])
+connections.create_connection(hosts=['es'])
 BUZZ_NUM_GUESSES = 10
 BUZZ_THRESHOLD = 0.2
 
@@ -206,7 +208,6 @@ class ElasticSearchGuesser():
             scores = [guess[1] for guess in guesses]
             buzz = scores[0] / sum(scores) >= BUZZ_THRESHOLD
             outputs.append((guesses[0][0], buzz))
-        # print(outputs)
         return outputs
 
 

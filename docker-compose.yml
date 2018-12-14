@@ -18,6 +18,8 @@ services:
       - ./src/:/src
       - ./data/:/src/data
     command: ["bash", "run.sh"]
+    depends_on:
+      - "es"
   eval:
     image: "docker.io/sweagraw/quizbowl"
     volumes:
