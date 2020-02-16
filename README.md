@@ -1,13 +1,7 @@
-This is a simple, baseline system that does well on the question answering task "quiz bowl".  This system generates the baseline score on our leaderboard and demonstrates the IO profile we expect of Docker container submission.
-
-
 # Reference System
 
-We provide sample code which when combined with the provided docker container
-can answer Quiz Bowl questions. This should provide an example of how the
-codalab server interacts with the container as well as a simple yet
-surprisingly effective baseline. The simple system consists of a TF-IDF guesser
-and a threshold-based buzzer.
+We used the sample code provided (https://github.com/Pinafore/qanta-codalab) which when combined with the provided docker container
+can answer Quiz Bowl questions. 
 
 # System Requirements
 
